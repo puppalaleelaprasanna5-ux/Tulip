@@ -19,4 +19,4 @@ and particle effects.
 
 pip install -r requirements.txt
 
-python lily.py
+python main.py
