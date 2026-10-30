@@ -10,15 +10,72 @@ pygame.init()
 # THE WHOLE LIFE OF A LILY - A GLOWING PARTICLE BLOOM
 # ==================================================
 
-WIDTH, HEIGHT = 900, 800
+# The flower is authored in a fixed 900x800 design frame. The canvas itself is
+# sized to the browser viewport so the background, star field and rings fill the
+# screen; the flower keeps its original size and is translated to stay centred.
+DESIGN_W, DESIGN_H = 900, 800
+MAX_W, MAX_H = 1920, 1200   # bound the canvas so the glowing bloom stays smooth
+
+
+def _viewport_size():
+    # Browser viewport under pygbag; falls back to the design size off-web.
+    try:
+        import platform
+        vw = int(platform.window.innerWidth)
+        vh = int(platform.window.innerHeight)
+        if vw > 0 and vh > 0:
+            return vw, vh
+    except Exception:
+        pass
+    return DESIGN_W, DESIGN_H
+
+
+_vw, _vh = _viewport_size()
+# The flower is drawn at its original size (bounding box ~513x608 in the design
+# frame). When the viewport can hold it with a margin, the backing store matches
+# the viewport 1:1 (desktop path, unchanged). When it is too small (phones), the
+# backing is enlarged to the same aspect ratio so the flower keeps its natural
+# proportions and fits without clipping; the CSS then scales that backing down to
+# fill the screen. Either way the backing covers the viewport, so the background
+# and particle ground fill it completely.
+_FLOWER_W, _FLOWER_H = 513, 608     # measured flower bounding box
+_FIT_FRAC = 0.9                     # flower spans at most this fraction of the screen
+_need = max(1.0, _FLOWER_W / _FIT_FRAC / _vw, _FLOWER_H / _FIT_FRAC / _vh)
+if _need <= 1.0:
+    # Large screens: backing = viewport, bounded for performance. Unchanged.
+    _fit = min(1.0, MAX_W / _vw, MAX_H / _vh)
+    WIDTH = max(320, round(_vw * _fit))
+    HEIGHT = max(320, round(_vh * _fit))
+else:
+    # Small screens: enlarge the backing (same aspect) so the flower fits.
+    _bw, _bh = _vw * _need, _vh * _need
+    _budget = MAX_W * MAX_H
+    if _bw * _bh > _budget:
+        _s = (_budget / (_bw * _bh)) ** 0.5
+        _bw, _bh = _bw * _s, _bh * _s
+    WIDTH = max(320, round(_bw))
+    HEIGHT = max(320, round(_bh))
+
+# Centre of the flower's bounding box (petals, stem and leaves) within the
+# 900x800 design frame, measured from the drawing geometry. The flower is not
+# centred inside its frame — its bloom sits high — so shifting the frame leaves
+# the flower too high and clips the top petals. Centre on the bloom's box so the
+# whole flower stays centred at its original size; the background fills the rest.
+FLOWER_CX, FLOWER_CY = 474, 379
+OFF_X = round(WIDTH / 2 - FLOWER_CX)
+OFF_Y = round(HEIGHT / 2 - FLOWER_CY)
+SCALE_X = WIDTH / DESIGN_W
+SCALE_Y = HEIGHT / DESIGN_H
+RING_SCALE = (SCALE_X + SCALE_Y) / 2
+
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("The Whole Life of a Lily")
 clock = pygame.time.Clock()
 
-GROUND = 705
+GROUND = 705 + OFF_Y
 STEM_BASE = GROUND - 22
-STEM_X = 470
-FLOWER_TOP = 330
+STEM_X = 470 + OFF_X
+FLOWER_TOP = 330 + OFF_Y
 SPIN_START = 10.6    # the lily starts turning once fully open
 SPIN_SPEED = 0.45    # radians per second
 
@@ -113,7 +170,7 @@ def make_background():
         pygame.draw.line(bg, color, (0, y), (WIDTH, y))
 
     halo = make_glow(380, (30, 40, 120), 0.55)
-    bg.blit(halo, (STEM_X - 380, 470 - 380), special_flags=pygame.BLEND_ADD)
+    bg.blit(halo, (STEM_X - 380, 470 + OFF_Y - 380), special_flags=pygame.BLEND_ADD)
     return bg
 
 
@@ -129,7 +186,7 @@ anther_glow = make_glow(16, ANTHER, 1.0)
 stars = [
     (rng.randrange(WIDTH), rng.randrange(HEIGHT),
      rng.uniform(0, 6.28), rng.choice([1, 1, 1, 2]))
-    for _ in range(140)
+    for _ in range(max(60, round(140 * WIDTH * HEIGHT / (DESIGN_W * DESIGN_H))))
 ]
 
 stem_seeds = [
@@ -224,7 +281,7 @@ for it in range(N_T):
         petal_phases.append(phase)
 
 ground_seeds = []
-for _ in range(2200):
+for _ in range(max(600, round(2200 * WIDTH / DESIGN_W))):
     x = rng.uniform(0, WIDTH)
     mound = 18 + 34 * math.exp(-((x - STEM_X) / 250) ** 2)
     depth = abs(rng.gauss(0, 1)) * 45
@@ -240,13 +297,23 @@ for x, y, color, size, phase in ground_seeds:
     ground_layer.fill(scale(color, 0.8), (int(x), int(y), size, size))
 twinkling = ground_seeds[::8]
 
-# (center x, center y, radius, spin speed)
-CIRCLES = [
-    (STEM_X, 400, 265, 0.05),
+# (center x, center y, radius, spin speed) in the original 900x800 design frame.
+BASE_CIRCLES = [
+    (470, 400, 265, 0.05),
     (330, 300, 120, -0.09),
     (280, 560, 175, 0.07),
     (660, 560, 165, -0.06),
     (735, 360, 120, 0.08),
+]
+
+# Spread the ring composition out from the centre and scale it so it reaches the
+# edges on large displays and draws inward on small ones — filling the screen
+# around the flower instead of scaling with it.
+CIRCLES = [
+    (WIDTH / 2 + (cx - DESIGN_W / 2) * SCALE_X,
+     HEIGHT / 2 + (cy - DESIGN_H / 2) * SCALE_Y,
+     radius * RING_SCALE, speed)
+    for cx, cy, radius, speed in BASE_CIRCLES
 ]
 
 # Each ring's dashes precomputed as unit (cos, sin) pairs, so the spinning
