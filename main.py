@@ -1,4 +1,5 @@
 
+import asyncio
 import math
 import random
 import pygame
@@ -706,61 +707,68 @@ def add_bloom():
     screen.blit(soft, (0, 0), special_flags=pygame.BLEND_ADD)
 
 
-running = True
-paused = False
-paused_at = 0
+async def main():
+    global start_time
+    running = True
+    paused = False
+    paused_at = 0
 
-while running:
-    dt = clock.tick(30) / 1000
+    while running:
+        dt = clock.tick(30) / 1000
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
                 running = False
 
-            if event.key == pygame.K_r:
-                start_time = pygame.time.get_ticks()
-                dust.clear()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
 
-            if event.key == pygame.K_SPACE:
-                paused = not paused
-                if paused:
-                    paused_at = pygame.time.get_ticks()
-                else:
-                    start_time += pygame.time.get_ticks() - paused_at
+                if event.key == pygame.K_r:
+                    start_time = pygame.time.get_ticks()
+                    dust.clear()
 
-    now = paused_at if paused else pygame.time.get_ticks()
-    age = (now - start_time) / 1000
-    elapsed = age
-    st = life_stage(age)
+                if event.key == pygame.K_SPACE:
+                    paused = not paused
+                    if paused:
+                        paused_at = pygame.time.get_ticks()
+                    else:
+                        start_time += pygame.time.get_ticks() - paused_at
 
-    scene.fill((0, 0, 0))
+        now = paused_at if paused else pygame.time.get_ticks()
+        age = (now - start_time) / 1000
+        elapsed = age
+        st = life_stage(age)
 
-    draw_stars(elapsed)
-    draw_circles(elapsed, ease((age - 1.5) / 3.0))
-    draw_ground(elapsed)
+        scene.fill((0, 0, 0))
 
-    # Leaves pointing away from us go behind the stem
-    for idx, (leaf, seeds) in enumerate(zip(LEAVES, leaf_seeds)):
-        if math.sin(math.radians(leaf[1])) < 0:
-            draw_leaf(idx, leaf, seeds, st, age, elapsed)
+        draw_stars(elapsed)
+        draw_circles(elapsed, ease((age - 1.5) / 3.0))
+        draw_ground(elapsed)
 
-    draw_stem(st, elapsed)
+        # Leaves pointing away from us go behind the stem
+        for idx, (leaf, seeds) in enumerate(zip(LEAVES, leaf_seeds)):
+            if math.sin(math.radians(leaf[1])) < 0:
+                draw_leaf(idx, leaf, seeds, st, age, elapsed)
 
-    for idx, (leaf, seeds) in enumerate(zip(LEAVES, leaf_seeds)):
-        if math.sin(math.radians(leaf[1])) >= 0:
-            draw_leaf(idx, leaf, seeds, st, age, elapsed)
+        draw_stem(st, elapsed)
 
-    draw_flower(st, elapsed, age)
-    update_dust(0 if paused else dt, st, elapsed)
+        for idx, (leaf, seeds) in enumerate(zip(LEAVES, leaf_seeds)):
+            if math.sin(math.radians(leaf[1])) >= 0:
+                draw_leaf(idx, leaf, seeds, st, age, elapsed)
 
-    screen.blit(background, (0, 0))
-    screen.blit(scene, (0, 0), special_flags=pygame.BLEND_ADD)
-    add_bloom()
+        draw_flower(st, elapsed, age)
+        update_dust(0 if paused else dt, st, elapsed)
 
-    pygame.display.flip()
+        screen.blit(background, (0, 0))
+        screen.blit(scene, (0, 0), special_flags=pygame.BLEND_ADD)
+        add_bloom()
 
-pygame.quit()
+        pygame.display.flip()
+
+        await asyncio.sleep(0)
+
+    pygame.quit()
+
+
+asyncio.run(main())
